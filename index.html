@@ -14,24 +14,14 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 </head>
 <body>
 <canvas id="c"></canvas>
-<div id="start">touche l’écran<br>pour ouvrir l’œil<br>(son activé)</div>
+<div id="start">touche l’écran<br>pour ouvrir 😁</div>
 
 <script>
 /* ============================================================
-   🔊 COMMENT METTRE TON PROPRE SON
+   🔊 SON télécharger en mp3 (mp4...) mis dans le même dossier que l'index
    ------------------------------------------------------------
-   1. Mets ton fichier audio (mp3, m4a, wav) dans le MÊME
-      dossier que ce index.html sur GitHub.
-      Exemple : monson.mp3
-   2. Change simplement la ligne ci-dessous :
-         const SOUND_FILE = "monson.mp3";
-   3. Évite les espaces et accents dans le nom du fichier.
-   4. Sur iPhone, le son démarre seulement après un toucher
-      de l’écran (règle de Safari) : c’est déjà géré ici.
-   Si le fichier est introuvable, un petit son ambiant
-   généré par le code (drone + battements de cœur) joue à la place.
    ============================================================ */
-const SOUND_FILE   = "./inmark.mp3"; // ← ton fichier ici
+const SOUND_FILE   = "./inmark.mp3"; // ← le fichier ici
 const SOUND_VOLUME = 0.8;         // 0 (muet) à 1 (max)
 const SOUND_LOOP   = true;        // true = le son tourne en boucle
 const T_END        = 24;          // durée de l’animation (s), puis elle recommence
