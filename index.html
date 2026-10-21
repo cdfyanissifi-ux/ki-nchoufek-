@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<title>Eye → Space</title>
+<style>
+html,body{margin:0;height:100%;background:#000;overflow:hidden;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+#start{position:fixed;inset:0;z-index:2;display:flex;align-items:center;justify-content:center;background:#000;color:#d98a5f;font:15px/1.6 "Courier New",monospace;letter-spacing:.12em;text-align:center;cursor:pointer;padding:env(safe-area-inset-top) 24px env(safe-area-inset-bottom)}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="start">touche l’écran<br>pour ouvrir l’œil<br>(son activé)</div>
+
+<script>
+/* ============================================================
+   🔊 COMMENT METTRE TON PROPRE SON
+   ------------------------------------------------------------
+   1. Mets ton fichier audio (mp3, m4a, wav) dans le MÊME
+      dossier que ce index.html sur GitHub.
+      Exemple : monson.mp3
+   2. Change simplement la ligne ci-dessous :
+         const SOUND_FILE = "monson.mp3";
+   3. Évite les espaces et accents dans le nom du fichier.
+   4. Sur iPhone, le son démarre seulement après un toucher
+      de l’écran (règle de Safari) : c’est déjà géré ici.
+   Si le fichier est introuvable, un petit son ambiant
+   généré par le code (drone + battements de cœur) joue à la place.
+   ============================================================ */
+const SOUND_FILE   = "sound.mp3"; // ← ton fichier ici
+const SOUND_VOLUME = 0.8;         // 0 (muet) à 1 (max)
+const SOUND_LOOP   = true;        // true = le son tourne en boucle
+const T_END        = 24;          // durée de l’animation (s), puis elle recommence
+
+/* ---------- canvas ---------- */
+const cv = document.getElementById('c'), cx = cv.getContext('2d');
+let W, H, cw, ch, cols, rows;
+function resize(){
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  cw = Math.max(7, Math.round(W / 55)); ch = cw * 1.7;
+  cols = Math.ceil(W / cw); rows = Math.ceil(H / ch);
+  cx.font = 'bold ' + (ch * 0.95) + 'px "Courier New",Courier,monospace';
+  cx.textBaseline = 'top';
+}
+window.addEventListener('resize', resize); resize();
+
+/* ---------- utilitaires ---------- */
+const lerp = (a, b, t) => a + (b - a) * t;
+const cl = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const ss = (a, b, x) => { x = cl((x - a) / (b - a)); return x * x * (3 - 2 * x); };
+const RAMP = " .:ir/()jtfxnuvczXYUJCLQOZmwqpdbkhao*#%8$@";
+const NR = RAMP.length;
+const stars = Array.from({length: 110}, () => ({x: Math.random(), y: Math.random(), p: Math.random() * 6.28, r: Math.random()}));
+
+/* ---------- chronologie ----------
+   0-2.3s  l’œil s’ouvre   | 3.2s clignement
+   4-7s    regarde en bas à droite
+   7.4-11.5s zoom : le cœur de la pupille remplit l’écran
+   13-16.5s le cœur recule pendant que l’œil grossit et sort de l’écran */
+function scene(t){
+  const p = {open: ss(0.3, 2.3, t), gx: 0, gy: 0, s: 1, heart: 0, space: 0};
+  const b = cl((t - 3.2) / 0.5);
+  if (b > 0 && b < 1) p.open *= 1 - Math.sin(b * Math.PI) * 0.95;
+  const look = ss(4.2, 5.2, t) - ss(6.6, 7.4, t);
+  p.gx = 0.22 * look; p.gy = 0.14 * look;
+  p.s = lerp(1, 8, ss(7.4, 11.5, t));
+  p.heart = ss(8.5, 10.5, t);
+  p.space = ss(13, 16.5, t);
+  p.se = p.s * Math.pow(26 / p.s, p.space);   // l’œil continue de grossir jusqu’à sortir de l’écran
+  p.s = lerp(p.s, 3.9, p.space);              // le cœur, lui, recule
+  return p;
+}
+
+/* ---------- couleur / luminosité d’une cellule ---------- */
+const out = {r: 0, g: 0, b: 0, bl: 0};
+function shade(u, v, p, t){
+  const k = p.space, x = u / p.se, y = v / p.se;
+  const dx = x - p.gx, dy = y - p.gy, dist = Math.hypot(dx, dy);
+  // cœur dans la pupille, puis libre dans l’espace (k = 1)
+  const hdx = u / p.s - p.gx, hdy = v / p.s - p.gy;
+  if (p.heart > 0.02 && Math.hypot(hdx, hdy) < lerp(0.13, 9, k)){
+    const hs = p.heart * (1 + 0.08 * Math.sin(t * 8));
+    const X = hdx / (0.1 * hs), Y = -hdy / (0.1 * hs) + 0.15;
+    if (Math.pow(X * X + Y * Y - 1, 3) - X * X * Y * Y * Y < 0){
+      out.r = 1; out.g = 0.2; out.bl = 0.4; out.b = 0.65 + 0.3 * cl((Y + 1) / 2.3);
+      return;
+    }
+  }
+  const w = 0.9, ax = x / w, ax2 = ax * ax;
+  const arch = ax2 < 1 ? Math.pow(1 - ax2, 0.75) : 0;
+  const hu = 0.40 * arch * p.open, hl = 0.30 * arch * p.open;
+  const d = ax2 >= 1 ? 9 : (y < 0 ? -y / (hu + 1e-4) : y / (hl + 1e-4));
+  let R, G, B, b;
+  if (d < 1){
+    b = 0.9 - 0.5 * d * d; R = 1; G = 0.84; B = 0.68;
+    const ir = 0.3, pr = 0.13;
+    if (dist < ir){
+      const q = dist / ir;
+      b = 0.5 + 0.4 * q; R = 1; G = 0.5 + 0.2 * (1 - q); B = 0.18;
+      if (dist < pr){
+        b = 0;
+        if (Math.random() < 0.05 * p.heart * cl(1 - k * 4)){ b = 0.6; R = G = B = 1; } // étoiles dans la pupille
+      }
+    }
+    if (Math.hypot(x - p.gx + 0.09, y - p.gy + 0.09) < 0.035){ b = 1; R = G = B = 1; }
+    if (d > 0.88) b *= 0.6;
+  } else {
+    b = (0.3 - 0.12 * Math.min(1, Math.hypot(x, y) / 1.6)) * (0.85 + 0.15 * Math.sin(t * 2 + x * 6 + y * 5));
+    if (y < 0 && d < 1.3) b *= 0.4;
+    if (ax2 < 1 && Math.abs(y) < 0.025) b = 0.55;
+    R = 0.62; G = 0.40; B = 0.29;
+  }
+  out.r = R; out.g = G; out.bl = B; out.b = b;
+}
+
+/* ---------- boucle d’animation ---------- */
+let t0 = 0, last = 0, running = false;
+function frame(now){
+  requestAnimationFrame(frame);
+  if (now - last < 42) return; last = now;
+  const t = ((now - t0) / 1000) % T_END;
+  const p = scene(t);
+  const fade = ss(0, 0.4, t) * (1 - ss(T_END - 0.8, T_END, t));
+  cx.fillStyle = '#000'; cx.fillRect(0, 0, W, H);
+  const sa = cl((p.space - 0.35) / 0.65);
+  if (sa > 0){
+    for (const st of stars){
+      const a = sa * fade * (0.35 + 0.65 * Math.abs(Math.sin(t * 1.5 + st.p)));
+      const px = st.x * W, py = st.y * H, big = st.r > 0.85;
+      cx.fillStyle = 'rgba(255,255,255,' + a.toFixed(2) + ')';
+      cx.fillRect(px, py, big ? 2.5 : 1.5, big ? 2.5 : 1.5);
+      if (big){ cx.fillRect(px - 5, py + 0.5, 12, 1); cx.fillRect(px + 0.5, py - 5, 1, 12); }
+    }
+  }
+  const half = Math.min(W, H * 1.4) / 2;
+  for (let j = 0; j < rows; j++){
+    const v = (j * ch + ch / 2 - H / 2) / half;
+    for (let i = 0; i < cols; i++){
+      shade((i * cw + cw / 2 - W / 2) / half, v, p, t);
+      const b = out.b * fade;
+      if (b < 0.05) continue;
+      let idx = (b * (NR - 1) + (Math.random() - 0.5) * 6) | 0;
+      idx = idx < 1 ? 1 : idx > NR - 1 ? NR - 1 : idx;   // lettres aléatoires en mouvement
+      const f = 0.4 + 0.6 * b;
+      cx.fillStyle = 'rgb(' + (out.r * 255 * f | 0) + ',' + (out.g * 255 * f | 0) + ',' + (out.bl * 255 * f | 0) + ')';
+      cx.fillText(RAMP[idx], i * cw, j * ch);
+    }
+  }
+}
+
+/* ---------- son ---------- */
+let ac = null, audio = null, drone = false;
+function fallbackDrone(){
+  if (drone || !ac) return; drone = true;
+  const g = ac.createGain(); g.gain.value = 0.07; g.connect(ac.destination);
+  [55, 82.4, 110.3].forEach((f, i) => {
+    const o = ac.createOscillator(); o.type = i ? 'sine' : 'triangle';
+    o.frequency.value = f; o.connect(g); o.start();
+  });
+  setInterval(() => {                       // battement de cœur quand le cœur apparaît
+    if (scene(((performance.now() - t0) / 1000) % T_END).heart < 0.3) return;
+    const o = ac.createOscillator(), e = ac.createGain();
+    o.frequency.value = 60; o.connect(e); e.connect(ac.destination);
+    e.gain.setValueAtTime(0.5, ac.currentTime);
+    e.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.25);
+    o.start(); o.stop(ac.currentTime + 0.3);
+  }, 800);
+}
+function startSound(){
+  try { ac = new (window.AudioContext || window.webkitAudioContext)(); ac.resume(); } catch (e) {}
+  audio = new Audio(SOUND_FILE);
+  audio.loop = SOUND_LOOP; audio.volume = SOUND_VOLUME;
+  audio.addEventListener('error', fallbackDrone);
+  const pr = audio.play();
+  if (pr && pr.catch) pr.catch(fallbackDrone);
+}
+
+/* ---------- démarrage (un toucher est obligatoire sur iPhone) ---------- */
+const startEl = document.getElementById('start');
+function begin(){
+  startEl.style.display = 'none';
+  t0 = performance.now();
+  if (!running){ running = true; requestAnimationFrame(frame); }
+  startSound();
+}
+startEl.addEventListener('click', begin);
+startEl.addEventListener('touchend', e => { e.preventDefault(); begin(); }, {passive: false});
+</script>
+</body>
+</html>
